@@ -25,6 +25,13 @@ export function Sidebar({ data, patch, run, busy }: Props) {
     ["roster", `名簿（${data.students.length}）`],
     ["groups", `離すグループ（${data.separation_groups.length}）`],
   ] as const;
+  // バックエンドの仕様（有効座席数 = 生徒数）と同じ条件で実行を止める
+  const seats = seatCount(data.seat_model);
+  const blocker = !data.students.length
+    ? "名簿が空です。生徒を追加してください。"
+    : seats !== data.students.length
+      ? `有効な座席数(${seats})と生徒数(${data.students.length})が一致していません。レイアウトの座席数を調整してください。`
+      : null;
 
   return (
     <aside className="flex w-120 shrink-0 flex-col border-r border-slate-300 bg-slate-50 print:hidden">
@@ -49,9 +56,14 @@ export function Sidebar({ data, patch, run, busy }: Props) {
       </div>
 
       <div className="border-t border-slate-300 bg-white p-3 space-y-2">
+        {blocker && (
+          <p role="alert" className="rounded border border-rose-400 bg-rose-50 px-2.5 py-1.5 text-xs font-bold text-rose-800">
+            {blocker}
+          </p>
+        )}
         <button
           onClick={run}
-          disabled={busy}
+          disabled={busy || blocker !== null}
           className="flex w-full items-center justify-center gap-2 rounded bg-slate-900 py-3 text-base font-bold text-white hover:bg-slate-700 disabled:opacity-60"
         >
           {busy ? <Loader2 className="size-5 animate-spin" /> : <Shuffle className="size-5" />}
