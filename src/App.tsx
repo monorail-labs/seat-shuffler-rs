@@ -1,19 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import { GraduationCap, Eye, History, Plus, Printer, Wrench } from "lucide-react";
+import { Download, GraduationCap, Eye, History, Plus, Printer, Upload, Wrench } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
 import { makeSeatModel, toggleSeat } from "./types";
 import type { Data, SolveResult, View } from "./types";
-
-interface AppState {
-  data: Data;
-  seats: number[];
-  retries: number | null;
-  createdAt: string;
-  updatedAt: string;
-}
+import { deserialize, fileName, serialize } from "./backup";
+import type { AppState } from "./backup";
 
 const KEY = "seating-app-v1";
 const today = () => new Date().toLocaleDateString("ja-JP");
@@ -82,6 +76,34 @@ export default function App() {
   const addHistory = () => {
     patch((d) => ({ ...d, history: [...d.history, seats] }));
     setToast({ msg: `履歴に追加しました（計${data.history.length + 1}回）`, err: false });
+  };
+
+  // 名簿・レイアウト・座席履歴・現在の配置をまとめて JSON ファイルに保存する
+  const exportData = async () => {
+    try {
+      const saved = await invoke<boolean>("export_json", { contents: serialize(st), fileName: fileName(st) });
+      if (saved) setToast({ msg: "データをエクスポートしました", err: false });
+    } catch (e) {
+      setToast({ msg: String(e), err: true });
+    }
+  };
+
+  // JSON ファイルを読み込み、検証してから現在のデータを置き換える
+  const importData = async () => {
+    try {
+      const text = await invoke<string | null>("import_json");
+      if (text == null) return;
+      const next = deserialize(text, today());
+      const ok = window.confirm(
+        `「${next.data.title}」（生徒 ${next.data.students.length} 名・履歴 ${next.data.history.length} 回）を読み込みます。
+現在のデータは上書きされます。よろしいですか？`,
+      );
+      if (!ok) return;
+      setSt(next);
+      setToast({ msg: "データをインポートしました", err: false });
+    } catch (e) {
+      setToast({ msg: e instanceof Error ? e.message : String(e), err: true });
+    }
   };
 
   // 画面を切り替えてから印刷し、終わったら元の視点に戻す
@@ -162,6 +184,8 @@ export default function App() {
           </button>
           <button className={btn} disabled={!canCommit} onClick={addHistory}><History className="size-4" />履歴に追加</button>
           <div className="ml-auto flex gap-2">
+            <button className={btn} onClick={importData}><Upload className="size-4" />インポート</button>
+            <button className={btn} onClick={exportData}><Download className="size-4" />エクスポート</button>
             <button className={btn} onClick={() => printAs("student")}><Printer className="size-4" />生徒用印刷</button>
             <button className={btn} onClick={() => printAs("teacher")}><Printer className="size-4" />先生用印刷</button>
           </div>
