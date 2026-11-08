@@ -15,15 +15,33 @@ interface Props {
 const inp =
   "w-full rounded border border-slate-300 bg-white px-1.5 py-1 text-sm text-slate-900 focus:border-slate-700 focus:outline-none";
 const lbl = "mb-1 block text-xs font-medium text-slate-600";
+const COUNTS_KEY = "seating-app-show-tab-counts";
+function loadShowCounts() {
+  try {
+    return localStorage.getItem(COUNTS_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
 const btn2 =
   "inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 hover:bg-slate-100";
 
 export function Sidebar({ data, patch, run, busy }: Props) {
   const [tab, setTab] = useState<"basic" | "roster" | "groups">("basic");
+  const [showCounts, setShowCounts] = useState(loadShowCounts);
+  useEffect(() => {
+    try {
+      localStorage.setItem(COUNTS_KEY, showCounts ? "1" : "0");
+    } catch {
+      /* 保存できなくても表示には影響しない */
+    }
+  }, [showCounts]);
+  const n = (x: number) => (showCounts ? `（${x}）` : "");
   const tabs = [
     ["basic", "基本設定"],
-    ["roster", `名簿（${data.students.length}）`],
-    ["groups", `離すグループ（${data.separation_groups.length}）`],
+    ["roster", `名簿${n(data.students.length)}`],
+    ["groups", `離すグループ${n(data.separation_groups.length)}`],
   ] as const;
   // バックエンドの仕様（有効座席数 = 生徒数）と同じ条件で実行を止める
   const seats = seatCount(data.seat_model);
@@ -50,7 +68,7 @@ export function Sidebar({ data, patch, run, busy }: Props) {
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {tab === "basic" && <Basic data={data} patch={patch} />}
+        {tab === "basic" && <Basic data={data} patch={patch} showCounts={showCounts} setShowCounts={setShowCounts} />}
         {tab === "roster" && <Roster data={data} patch={patch} />}
         {tab === "groups" && <Groups data={data} patch={patch} />}
       </div>
@@ -75,7 +93,7 @@ export function Sidebar({ data, patch, run, busy }: Props) {
   );
 }
 
-function Basic({ data, patch }: Omit<Props, "run" | "busy">) {
+function Basic({ data, patch, showCounts, setShowCounts }: Omit<Props, "run" | "busy"> & { showCounts: boolean; setShowCounts: (v: boolean) => void }) {
   const rows = data.seat_model.length;
   const cols = data.seat_model[0]?.length ?? 0;
   // 全行が空白の列だけを「通路列」として表示（個別セル編集と矛盾させない）
@@ -143,6 +161,14 @@ function Basic({ data, patch }: Omit<Props, "run" | "busy">) {
         <legend className="pr-2 text-sm font-bold text-slate-800">過去の配置（履歴 {data.history.length} 回）</legend>
         <p className="text-xs text-slate-600">履歴にある席には、その生徒は再び座りません。席替え後、配置を確定するには画面上部の「履歴に追加」を押します。</p>
         <button className={btn2} disabled={!data.history.length} onClick={() => patch((d) => ({ ...d, history: [] }))}>履歴をすべて消す</button>
+      </fieldset>
+
+      <fieldset className="space-y-2 border-t border-slate-300 pt-4">
+        <legend className="pr-2 text-sm font-bold text-slate-800">表示</legend>
+        <label className="flex items-center gap-2 text-sm text-slate-800">
+          <input type="checkbox" className="size-4" checked={showCounts} onChange={(e) => setShowCounts(e.target.checked)} />
+          タブに件数を表示する（例: 名簿（30））
+        </label>
       </fieldset>
     </div>
   );
