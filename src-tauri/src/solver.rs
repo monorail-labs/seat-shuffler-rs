@@ -58,6 +58,8 @@ pub fn solve(data: &Data) -> Result<SolveResult, String> {
     // リトライに入る前に、固定席の矛盾を決定的に検出する
     validate_fixed_seats(&data.students, &data.separation_groups, &coord_map)?;
     validate_adjacent_pairs(data, &coord_map)?;
+    // 鎖の端から順に置けるよう並べ替えたペア
+    let pair_order = order_pairs_along_chains(data)?;
 
     let candidates = build_candidates(data, &seat_ids);
     if candidates.iter().any(Vec::is_empty) {
@@ -65,7 +67,7 @@ pub fn solve(data: &Data) -> Result<SolveResult, String> {
     }
 
     for retries in 0..=MAX_RETRIES {
-        let Some(seats) = assign_seats(&candidates, &data.adjacent_pairs, &coord_map) else {
+        let Some(seats) = assign_seats(&candidates, &pair_order, &coord_map) else {
             continue;
         };
         if is_separation_valid(&seats, &data.separation_groups, &coord_map) {
@@ -189,6 +191,71 @@ fn validate_adjacent_pairs(data: &Data, coord_map: &CoordMap) -> Result<(), Stri
         }
     }
     Ok(())
+}
+
+/// 隣にするペアを鎖（A-B, B-C → A・B・C）にまとめ、鎖の端から順に並べたペアを返す。
+/// 輪になっている鎖や、通路を挟まずに並んだ席の数より長い鎖は横一列に置けないのでエラーにする。
+/// validate_adjacent_pairs を通過している（1人の相手は2人まで）ことが前提
+fn order_pairs_along_chains(data: &Data) -> Result<Vec<[usize; 2]>, String> {
+    let names = |chain: &[usize]| {
+        chain
+            .iter()
+            .map(|&i| student_label(&data.students[i]))
+            .collect::<Vec<_>>()
+            .join("・")
+    };
+    let chains = pair_chains(data.students.len(), &data.adjacent_pairs)
+        .map_err(|ring| format!("隣にするペアの {} が輪になっているため、横一列に並べられません。", names(&ring)))?;
+
+    let longest = longest_seat_run(&data.seat_model);
+    if let Some(chain) = chains.iter().find(|c| c.len() > longest) {
+        return Err(format!(
+            "隣にするペアで {} の{}人が横一列に並ぶ必要がありますが、通路を挟まずに並んだ席は最大{longest}席です。",
+            names(chain),
+            chain.len()
+        ));
+    }
+    Ok(chains
+        .iter()
+        .flat_map(|chain| chain.windows(2).map(|w| [w[0], w[1]]))
+        .collect())
+}
+
+/// ペアのつながりを、端の生徒から辿った生徒の列にする。輪があれば、その生徒を Err で返す
+fn pair_chains(n: usize, adjacent_pairs: &[[usize; 2]]) -> Result<Vec<Vec<usize>>, Vec<usize>> {
+    let mut partners: Vec<Vec<usize>> = vec![vec![]; n];
+    for &[a, b] in adjacent_pairs {
+        if !partners[a].contains(&b) {
+            partners[a].push(b);
+            partners[b].push(a);
+        }
+    }
+
+    let mut visited = vec![false; n];
+    let mut chains = Vec::new();
+    // 相手が1人だけの生徒が鎖の端
+    for start in (0..n).filter(|&i| partners[i].len() == 1) {
+        if visited[start] {
+            continue;
+        }
+        let mut chain = vec![start];
+        visited[start] = true;
+        while let Some(&next) = partners[*chain.last().unwrap()].iter().find(|&&x| !visited[x]) {
+            visited[next] = true;
+            chain.push(next);
+        }
+        chains.push(chain);
+    }
+
+    // 端から辿り着けなかった生徒は輪の一部
+    let ring: Vec<usize> = (0..n)
+        .filter(|&i| !visited[i] && !partners[i].is_empty())
+        .collect();
+    if ring.is_empty() {
+        Ok(chains)
+    } else {
+        Err(ring)
+    }
 }
 
 fn student_label(s: &Student) -> String {
@@ -332,6 +399,16 @@ fn is_seat(id: i32) -> bool {
 
 fn is_too_close(a: Coord, b: Coord) -> bool {
     chebyshev_distance(a, b) < MIN_SEPARATION
+}
+
+/// 通路を挟まずに横に並んだ座席の最大数
+fn longest_seat_run(seat_model: &[Vec<i32>]) -> usize {
+    seat_model
+        .iter()
+        .flat_map(|row| row.split(|&id| !is_seat(id)))
+        .map(<[i32]>::len)
+        .max()
+        .unwrap_or(0)
 }
 
 /// 同じ行で左右に隣り合っているか。通路も 1 列として数えるので、通路を挟むと隣にならない
@@ -574,6 +651,45 @@ mod tests {
             assert!(side_by_side(&model, r.seats[0], r.seats[1]), "{:?}", r.seats);
             assert!(side_by_side(&model, r.seats[1], r.seats[2]), "{:?}", r.seats);
         }
+    }
+
+    #[test]
+    fn chained_pairs_listed_out_of_order_still_line_up() {
+        // 0-1, 2-3 を先に置くと 1-2 を隣にできなくなる順番。鎖の端から置けば必ず成功する
+        let model = vec![vec![0, 1, 2, 3], vec![4, 5, 6, 7]];
+        let mut d = data(model.clone(), students(&[None; 8]));
+        d.adjacent_pairs = vec![[0, 1], [2, 3], [1, 2]];
+        for _ in 0..100 {
+            let r = solve(&d).unwrap();
+            for [a, b] in [[0, 1], [1, 2], [2, 3]] {
+                assert!(side_by_side(&model, r.seats[a], r.seats[b]), "{:?}", r.seats);
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_chain_longer_than_seat_run() {
+        // 通路で区切られて、横に並んだ席は最大2席
+        let mut d = data(vec![vec![0, 1, -1, 2, 3], vec![4, 5, -1, 6, 7]], students(&[None; 8]));
+        d.adjacent_pairs = vec![[2, 3], [3, 4]];
+        let err = solve(&d).unwrap_err();
+        assert!(
+            err.contains("3番 生徒3・4番 生徒4・5番 生徒5 の3人が横一列") && err.contains("最大2席"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn rejects_ring_of_pairs() {
+        let mut d = data(vec![vec![0, 1, 2]], students(&[None; 3]));
+        d.adjacent_pairs = vec![[0, 1], [1, 2], [2, 0]];
+        let err = solve(&d).unwrap_err();
+        assert!(err.contains("が輪になっている"), "{err}");
+    }
+
+    #[test]
+    fn longest_seat_run_is_split_by_aisles() {
+        assert_eq!(longest_seat_run(&[vec![0, 1, -1, 2, 3, 4], vec![5, -1, 6, 7, -1, 8]]), 3);
     }
 
     #[test]
