@@ -28,7 +28,7 @@ const btn2 =
   "inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 hover:bg-slate-100";
 
 export function Sidebar({ data, patch, run, busy }: Props) {
-  const [tab, setTab] = useState<"basic" | "roster" | "groups">("basic");
+  const [tab, setTab] = useState<"basic" | "roster" | "groups" | "pairs">("basic");
   const [showCounts, setShowCounts] = useState(loadShowCounts);
   useEffect(() => {
     try {
@@ -42,6 +42,7 @@ export function Sidebar({ data, patch, run, busy }: Props) {
     ["basic", "基本設定"],
     ["roster", `名簿${n(data.students.length)}`],
     ["groups", `離すグループ${n(data.separation_groups.length)}`],
+    ["pairs", `隣にする${n(data.adjacent_pairs.length)}`],
   ] as const;
   // バックエンドの仕様（有効座席数 = 生徒数）と同じ条件で実行を止める
   const seats = seatCount(data.seat_model);
@@ -71,6 +72,7 @@ export function Sidebar({ data, patch, run, busy }: Props) {
         {tab === "basic" && <Basic data={data} patch={patch} showCounts={showCounts} setShowCounts={setShowCounts} />}
         {tab === "roster" && <Roster data={data} patch={patch} />}
         {tab === "groups" && <Groups data={data} patch={patch} />}
+        {tab === "pairs" && <Pairs data={data} patch={patch} />}
       </div>
 
       <div className="border-t border-slate-300 bg-white p-3 space-y-2">
@@ -191,6 +193,7 @@ function Roster({ data, patch }: Omit<Props, "run" | "busy">) {
         history: d.history.map((h) => h.filter((_, k) => k !== i)),
         front_student_num: d.front_student_num.filter((x) => x !== i).map(m),
         separation_groups: d.separation_groups.map((g) => g.filter((x) => x !== i).map(m)).filter((g) => g.length >= 2),
+        adjacent_pairs: d.adjacent_pairs.filter((p) => !p.includes(i)).map(([a, b]) => [m(a), m(b)]),
       };
     }, true);
 
@@ -301,6 +304,55 @@ function Groups({ data, patch }: Omit<Props, "run" | "busy">) {
         <button className={`${btn2} mt-2`} disabled={sel.length < 2}
           onClick={() => { patch((d) => ({ ...d, separation_groups: [...d.separation_groups, [...sel].sort((a, b) => a - b)] })); setSel([]); }}>
           <Plus className="size-4" />選択した生徒をグループにする
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function Pairs({ data, patch }: Omit<Props, "run" | "busy">) {
+  const [a, setA] = useState<number | null>(null);
+  const [b, setB] = useState<number | null>(null);
+  const nm = (i: number) => data.students[i]?.name || `番号${data.students[i]?.student_no}`;
+  const exists = a != null && b != null && data.adjacent_pairs.some(([x, y]) => (x === a && y === b) || (x === b && y === a));
+  const canAdd = a != null && b != null && a !== b && !exists;
+  const pick = (v: number | null, set: (v: number | null) => void, label: string) => (
+    <select aria-label={label} className={inp} value={v ?? ""} onChange={(e) => set(e.target.value === "" ? null : Number(e.target.value))}>
+      <option value="">選択してください</option>
+      {data.students.map((s, i) => (
+        <option key={i} value={i}>{s.student_no} {s.name}</option>
+      ))}
+    </select>
+  );
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-slate-600">ペアの2人は、左右に隣り合う席（通路を挟まない）になります。1人につき隣は2人まで指定できます。</p>
+      <ul className="space-y-2">
+        {data.adjacent_pairs.map(([x, y], pi) => (
+          <li key={pi} className="flex items-center gap-1.5 rounded border border-slate-300 bg-white p-2 text-sm text-slate-900">
+            <span className="rounded-sm bg-slate-200 px-2 py-0.5">{nm(x)}</span>
+            <span className="text-slate-500">と</span>
+            <span className="rounded-sm bg-slate-200 px-2 py-0.5">{nm(y)}</span>
+            <button aria-label="ペアを削除" className="ml-auto p-1 text-slate-500 hover:text-rose-700"
+              onClick={() => patch((d) => ({ ...d, adjacent_pairs: d.adjacent_pairs.filter((_, k) => k !== pi) }))}>
+              <Trash2 className="size-4" />
+            </button>
+          </li>
+        ))}
+        {!data.adjacent_pairs.length && <li className="text-sm text-slate-600">ペアはまだありません。</li>}
+      </ul>
+
+      <div className="space-y-2 rounded border border-slate-300 bg-white p-2">
+        <p className="text-xs font-medium text-slate-600">隣にしたい2名を選択</p>
+        <div className="grid grid-cols-2 gap-2">
+          {pick(a, setA, "1人目")}
+          {pick(b, setB, "2人目")}
+        </div>
+        {exists && <p className="text-xs text-rose-700">このペアはすでに登録されています。</p>}
+        <button className={btn2} disabled={!canAdd}
+          onClick={() => { patch((d) => ({ ...d, adjacent_pairs: [...d.adjacent_pairs, [Math.min(a!, b!), Math.max(a!, b!)]] })); setA(null); setB(null); }}>
+          <Plus className="size-4" />ペアを追加
         </button>
       </div>
     </div>

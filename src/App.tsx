@@ -15,7 +15,11 @@ const today = () => new Date().toLocaleDateString("ja-JP");
 function initial(): AppState {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as AppState;
+    if (raw) {
+      const saved = JSON.parse(raw) as AppState;
+      // 隣にするペア追加前のバージョンで保存されたデータにも対応する
+      return { ...saved, data: { ...saved.data, adjacent_pairs: saved.data.adjacent_pairs ?? [] } };
+    }
   } catch {
     /* 壊れた保存データは無視して初期化 */
   }
@@ -31,6 +35,7 @@ function initial(): AppState {
       history: [],
       front_student_num: [],
       separation_groups: [],
+      adjacent_pairs: [],
     },
     seats: [],
     retries: null,
