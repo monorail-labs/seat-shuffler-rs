@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { Download, GraduationCap, Eye, History, Plus, Printer, Upload, Wrench } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
+import { PresetMenu } from "./PresetMenu";
 import { makeSeatModel, toggleSeat } from "./types";
 import type { Data, SolveResult, View } from "./types";
 import { deserialize, fileName, serialize } from "./backup";
@@ -189,6 +190,7 @@ export default function App() {
           </button>
           <button className={btn} disabled={!canCommit} onClick={addHistory}><History className="size-4" />履歴に追加</button>
           <div className="ml-auto flex gap-2">
+            <PresetMenu st={st} today={today()} onLoad={setSt} notify={(msg, err = false) => setToast({ msg, err })} />
             <button className={btn} onClick={importData}><Upload className="size-4" />インポート</button>
             <button className={btn} onClick={exportData}><Download className="size-4" />エクスポート</button>
             <button className={btn} onClick={() => printAs("student")}><Printer className="size-4" />生徒用印刷</button>
