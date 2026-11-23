@@ -1,6 +1,7 @@
 mod solver;
 
 use solver::{Data, SolveResult};
+use tauri_plugin_dialog::DialogExt;
 
 // async にすることで、リトライ中も UI スレッドをブロックしない
 #[tauri::command]
@@ -11,7 +12,6 @@ async fn solve_seats(data: Data) -> Result<SolveResult, String> {
 // データの JSON 保存。ダイアログで保存先を選び、キャンセル時は false を返す
 #[tauri::command]
 async fn export_json(app: tauri::AppHandle, contents: String, file_name: String) -> Result<bool, String> {
-    use tauri_plugin_dialog::DialogExt;
     let Some(path) = app
         .dialog()
         .file()
@@ -29,7 +29,6 @@ async fn export_json(app: tauri::AppHandle, contents: String, file_name: String)
 // JSON ファイルを選んで中身を返す。キャンセル時は None。中身の検証はフロント側で行う
 #[tauri::command]
 async fn import_json(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    use tauri_plugin_dialog::DialogExt;
     let Some(path) = app
         .dialog()
         .file()
