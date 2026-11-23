@@ -35,6 +35,9 @@ pub struct Data {
     /// 前列に座らせる生徒のインデックス
     pub front_student_num: Vec<i32>,
     pub separation_groups: Vec<Vec<usize>>,
+    /// 左右の隣（通路を挟まない）に座らせる生徒インデックスの組
+    #[serde(default)]
+    pub adjacent_pairs: Vec<[usize; 2]>,
 }
 
 #[derive(Serialize, Debug)]
@@ -54,6 +57,7 @@ pub fn solve(data: &Data) -> Result<SolveResult, String> {
     let coord_map = build_coord_map(&data.seat_model);
     // リトライに入る前に、固定席の矛盾を決定的に検出する
     validate_fixed_seats(&data.students, &data.separation_groups, &coord_map)?;
+    validate_adjacent_pairs(data, &coord_map)?;
 
     let candidates = build_candidates(data, &seat_ids);
     if candidates.iter().any(Vec::is_empty) {
@@ -61,7 +65,9 @@ pub fn solve(data: &Data) -> Result<SolveResult, String> {
     }
 
     for retries in 0..=MAX_RETRIES {
-        let Some(seats) = assign_seats(&candidates) else { continue };
+        let Some(seats) = assign_seats(&candidates, &data.adjacent_pairs, &coord_map) else {
+            continue;
+        };
         if is_separation_valid(&seats, &data.separation_groups, &coord_map) {
             return Ok(SolveResult { seats, retries });
         }
@@ -92,6 +98,9 @@ fn validate_input(data: &Data, seat_ids: &[i32]) -> Result<(), String> {
     }
     if data.separation_groups.iter().flatten().any(|&i| i >= n) {
         return Err("離すグループに存在しない生徒が含まれています。".into());
+    }
+    if data.adjacent_pairs.iter().flatten().any(|&i| i >= n) {
+        return Err("隣にするペアに存在しない生徒が含まれています。".into());
     }
     Ok(())
 }
@@ -136,6 +145,45 @@ fn validate_fixed_seats(
                     "離すグループの {} と {} が隣接する固定席（{seat_a} と {seat_b}）に指定されています。固定席か離すグループを見直してください。",
                     student_label(&students[i]),
                     student_label(&students[j]),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 隣にするペアの矛盾（同一人物・離すグループとの衝突・離れた固定席・3人以上と隣）を探索前に検出する
+fn validate_adjacent_pairs(data: &Data, coord_map: &CoordMap) -> Result<(), String> {
+    let students = &data.students;
+    let mut partners: Vec<HashSet<usize>> = vec![HashSet::new(); students.len()];
+
+    for &[a, b] in &data.adjacent_pairs {
+        let (label_a, label_b) = (student_label(&students[a]), student_label(&students[b]));
+        if a == b {
+            return Err(format!("隣にするペアに {label_a} が2回指定されています。"));
+        }
+        if data
+            .separation_groups
+            .iter()
+            .any(|g| g.contains(&a) && g.contains(&b))
+        {
+            return Err(format!(
+                "{label_a} と {label_b} が「離すグループ」と「隣にするペア」の両方に指定されています。どちらかを外してください。"
+            ));
+        }
+        if let (Some(x), Some(y)) = (students[a].fixed_seat, students[b].fixed_seat) {
+            if !is_side_by_side(coord_map[&x], coord_map[&y]) {
+                return Err(format!(
+                    "隣にするペアの {label_a} と {label_b} の固定席（{x} と {y}）が左右に隣り合っていません。"
+                ));
+            }
+        }
+        partners[a].insert(b);
+        partners[b].insert(a);
+        for (i, label) in [(a, &label_a), (b, &label_b)] {
+            if partners[i].len() > 2 {
+                return Err(format!(
+                    "{label} が3人以上と「隣にするペア」になっています。左右の隣は2人までです。"
                 ));
             }
         }
@@ -188,25 +236,55 @@ fn build_candidates(data: &Data, seat_ids: &[i32]) -> Vec<Vec<i32>> {
         .collect()
 }
 
-/// 候補の少ない生徒から順に、まだ空いている候補席をランダムに割り当てる。
+/// 空いている候補席をランダムに割り当てる。
+/// 1. 隣にするペアを先に、左右に並んだ空席へ置く
+/// 2. 残りの生徒を候補の少ない順に置く
+///
 /// 途中で誰かの候補が尽きたら None を返す（呼び出し側でリトライする）
-fn assign_seats(candidates: &[Vec<i32>]) -> Option<Vec<i32>> {
+fn assign_seats(
+    candidates: &[Vec<i32>],
+    adjacent_pairs: &[[usize; 2]],
+    coord_map: &CoordMap,
+) -> Option<Vec<i32>> {
     let mut rng = rand::rng();
-    let mut order: Vec<usize> = (0..candidates.len()).collect();
-    order.sort_by_key(|&i| candidates[i].len());
+    let mut seats: Vec<Option<i32>> = vec![None; candidates.len()];
+    let mut taken: HashSet<i32> = HashSet::new();
+    let next_to = |x: i32, y: i32| is_side_by_side(coord_map[&x], coord_map[&y]);
 
-    let mut seats = vec![-1; candidates.len()]; // 成功時は全員分上書きされる
-    let mut taken = HashSet::new();
-    for i in order {
-        let seat = candidates[i]
-            .iter()
-            .copied()
-            .filter(|seat| !taken.contains(seat))
-            .choose(&mut rng)?;
-        taken.insert(seat);
-        seats[i] = seat;
+    for &[a, b] in adjacent_pairs {
+        let free = |i: usize| free_seats(&candidates[i], &taken);
+        let (seat_a, seat_b) = match (seats[a], seats[b]) {
+            // 連鎖したペア（A-B, B-C）で両方とも置き済みなら、隣かどうか確かめるだけ
+            (Some(sa), Some(sb)) if next_to(sa, sb) => continue,
+            (Some(_), Some(_)) => return None,
+            (Some(sa), None) => (sa, free(b).filter(|&sb| next_to(sa, sb)).choose(&mut rng)?),
+            (None, Some(sb)) => (free(a).filter(|&sa| next_to(sa, sb)).choose(&mut rng)?, sb),
+            (None, None) => free(a)
+                .flat_map(|sa| {
+                    free_seats(&candidates[b], &taken)
+                        .filter(move |&sb| next_to(sa, sb))
+                        .map(move |sb| (sa, sb))
+                })
+                .choose(&mut rng)?,
+        };
+        for (i, seat) in [(a, seat_a), (b, seat_b)] {
+            seats[i] = Some(seat);
+            taken.insert(seat);
+        }
     }
-    Some(seats)
+
+    let mut rest: Vec<usize> = (0..candidates.len()).filter(|&i| seats[i].is_none()).collect();
+    rest.sort_by_key(|&i| candidates[i].len());
+    for i in rest {
+        let seat = free_seats(&candidates[i], &taken).choose(&mut rng)?;
+        seats[i] = Some(seat);
+        taken.insert(seat);
+    }
+    seats.into_iter().collect()
+}
+
+fn free_seats<'a>(candidates: &'a [i32], taken: &'a HashSet<i32>) -> impl Iterator<Item = i32> + 'a {
+    candidates.iter().copied().filter(|seat| !taken.contains(seat))
 }
 
 /// 離すグループ内のどの 2 人も隣接していないか
@@ -256,6 +334,11 @@ fn is_too_close(a: Coord, b: Coord) -> bool {
     chebyshev_distance(a, b) < MIN_SEPARATION
 }
 
+/// 同じ行で左右に隣り合っているか。通路も 1 列として数えるので、通路を挟むと隣にならない
+fn is_side_by_side((r1, c1): Coord, (r2, c2): Coord) -> bool {
+    r1 == r2 && c1.abs_diff(c2) == 1
+}
+
 fn chebyshev_distance((r1, c1): Coord, (r2, c2): Coord) -> usize {
     r1.abs_diff(r2).max(c1.abs_diff(c2))
 }
@@ -303,6 +386,7 @@ mod tests {
             history: vec![],
             front_student_num: vec![],
             separation_groups: vec![],
+            adjacent_pairs: vec![],
         }
     }
 
@@ -446,5 +530,99 @@ mod tests {
             let r = solve(&d).unwrap();
             assert!(r.seats[0] <= 1 && r.seats[2] <= 1, "{:?}", r.seats);
         }
+    }
+
+    // --- 隣にするペア ---
+
+    fn side_by_side(seat_model: &[Vec<i32>], x: i32, y: i32) -> bool {
+        let m = build_coord_map(seat_model);
+        is_side_by_side(m[&x], m[&y])
+    }
+
+    #[test]
+    fn pair_sits_side_by_side() {
+        let model = vec![vec![0, 1, -1, 2, 3], vec![4, 5, -1, 6, 7]];
+        let mut d = data(model.clone(), students(&[None; 8]));
+        d.adjacent_pairs = vec![[0, 5]];
+        for _ in 0..100 {
+            let r = solve(&d).unwrap();
+            assert!(side_by_side(&model, r.seats[0], r.seats[5]), "{:?}", r.seats);
+        }
+    }
+
+    #[test]
+    fn pair_never_spans_aisle() {
+        // 1 と 2 は通路を挟むので隣ではない。ペアは {0,1} か {2,3} にしか座れない
+        let model = vec![vec![0, 1, -1, 2, 3]];
+        let mut d = data(model, students(&[None; 4]));
+        d.adjacent_pairs = vec![[0, 1]];
+        for _ in 0..100 {
+            let r = solve(&d).unwrap();
+            let mut pair = [r.seats[0], r.seats[1]];
+            pair.sort_unstable();
+            assert!(pair == [0, 1] || pair == [2, 3], "{:?}", r.seats);
+        }
+    }
+
+    #[test]
+    fn chained_pairs_sit_in_a_row() {
+        let model = vec![vec![0, 1, 2, 3], vec![4, 5, 6, 7]];
+        let mut d = data(model.clone(), students(&[None; 8]));
+        d.adjacent_pairs = vec![[0, 1], [1, 2]];
+        for _ in 0..100 {
+            let r = solve(&d).unwrap();
+            assert!(side_by_side(&model, r.seats[0], r.seats[1]), "{:?}", r.seats);
+            assert!(side_by_side(&model, r.seats[1], r.seats[2]), "{:?}", r.seats);
+        }
+    }
+
+    #[test]
+    fn pair_partner_sits_next_to_fixed_seat() {
+        let mut d = data(vec![vec![0, 1, 2, 3]], students(&[Some(1), None, None, None]));
+        d.adjacent_pairs = vec![[0, 3]];
+        for _ in 0..50 {
+            let r = solve(&d).unwrap();
+            assert!(r.seats[3] == 0 || r.seats[3] == 2, "{:?}", r.seats);
+        }
+    }
+
+    #[test]
+    fn rejects_pair_in_separation_group() {
+        let mut d = data(vec![vec![0, 1, 2, 3]], students(&[None; 4]));
+        d.adjacent_pairs = vec![[0, 1]];
+        d.separation_groups = vec![vec![0, 1, 2]];
+        let err = solve(&d).unwrap_err();
+        assert!(err.contains("1番 生徒1 と 2番 生徒2 が「離すグループ」と「隣にするペア」の両方"), "{err}");
+    }
+
+    #[test]
+    fn rejects_pair_with_distant_fixed_seats() {
+        let mut d = data(vec![vec![0, 1], vec![2, 3]], students(&[Some(0), Some(2), None, None]));
+        d.adjacent_pairs = vec![[0, 1]];
+        let err = solve(&d).unwrap_err();
+        assert!(err.contains("固定席（0 と 2）が左右に隣り合っていません"), "{err}");
+    }
+
+    #[test]
+    fn rejects_student_with_three_partners() {
+        let mut d = data(vec![vec![0, 1, 2, 3]], students(&[None; 4]));
+        d.adjacent_pairs = vec![[0, 1], [0, 2], [0, 3]];
+        let err = solve(&d).unwrap_err();
+        assert!(err.contains("1番 生徒1 が3人以上"), "{err}");
+    }
+
+    #[test]
+    fn rejects_pair_with_unknown_student() {
+        let mut d = data(vec![vec![0, 1]], students(&[None; 2]));
+        d.adjacent_pairs = vec![[0, 5]];
+        assert!(solve(&d).unwrap_err().contains("隣にするペアに存在しない生徒"));
+    }
+
+    #[test]
+    fn data_without_adjacent_pairs_still_deserializes() {
+        let json = r#"{"title":"t","teacher_name":null,"sub_teacher_name":null,"front_rows":1,
+            "seat_model":[[0,1]],"students":[],"history":[],"front_student_num":[],"separation_groups":[]}"#;
+        let d: Data = serde_json::from_str(json).unwrap();
+        assert!(d.adjacent_pairs.is_empty());
     }
 }
