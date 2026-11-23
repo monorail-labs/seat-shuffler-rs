@@ -539,4 +539,16 @@ mod tests {
         d.separation_groups = vec![vec![0, 1]];
         assert_eq!(solve(&d).unwrap().seats, vec![0, 1]);
     }
+
+    // --- 前列指定 ---
+
+    #[test]
+    fn front_students_stay_in_front_rows() {
+        let mut d = data(vec![vec![0, 1], vec![2, 3]], students(&[None; 4]));
+        d.front_student_num = vec![0, 2];
+        for _ in 0..50 {
+            let r = solve(&d).unwrap();
+            assert!(r.seats[0] <= 1 && r.seats[2] <= 1, "{:?}", r.seats);
+        }
+    }
 }
