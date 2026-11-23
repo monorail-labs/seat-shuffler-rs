@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Bookmark, Save, Trash2 } from "lucide-react";
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { deserialize } from "./backup";
 import type { AppState } from "./backup";
 import { loadPresets, makePreset, storePresets } from "./presets";
@@ -13,7 +14,8 @@ interface Props {
 }
 
 const btn = "inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-const small = "rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 hover:bg-slate-100";
+const ask = (message: string) => confirm(message, { title: "プリセット", kind: "warning" });
+const small ="rounded border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 hover:bg-slate-100";
 
 /** 名簿・レイアウト・履歴・設定・現在の配置を、名前を付けてアプリ内に保存・復元するメニュー */
 export function PresetMenu({ st, today, onLoad, notify }: Props) {
@@ -31,11 +33,11 @@ export function PresetMenu({ st, today, onLoad, notify }: Props) {
     }
   };
 
-  const saveNew = () => {
+  const saveNew = async () => {
     const n = name.trim() || st.data.title;
     const same = presets.find((p) => p.name === n);
     if (same) {
-      if (!window.confirm(`プリセット「${n}」はすでにあります。上書きしますか？`)) return;
+      if (!(await ask(`プリセット「${n}」はすでにあります。上書きしますか？`))) return;
       commit(presets.map((p) => (p.id === same.id ? makePreset(n, st, p.id) : p)), `プリセット「${n}」を上書き保存しました`);
     } else {
       commit([makePreset(n, st), ...presets], `プリセット「${n}」を保存しました`);
@@ -43,20 +45,20 @@ export function PresetMenu({ st, today, onLoad, notify }: Props) {
     setName("");
   };
 
-  const overwrite = (p: Preset) => {
-    if (!window.confirm(`プリセット「${p.name}」を現在の状態で上書きしますか？`)) return;
+  const overwrite = async (p: Preset) => {
+    if (!(await ask(`プリセット「${p.name}」を現在の状態で上書きしますか？`))) return;
     commit(presets.map((x) => (x.id === p.id ? makePreset(p.name, st, p.id) : x)), `プリセット「${p.name}」を上書き保存しました`);
   };
 
-  const remove = (p: Preset) => {
-    if (!window.confirm(`プリセット「${p.name}」を削除しますか？`)) return;
+  const remove = async (p: Preset) => {
+    if (!(await ask(`プリセット「${p.name}」を削除しますか？`))) return;
     commit(presets.filter((x) => x.id !== p.id), `プリセット「${p.name}」を削除しました`);
   };
 
-  const load = (p: Preset) => {
+  const load = async (p: Preset) => {
     try {
       const next = deserialize(p.contents, today);
-      if (!window.confirm(`プリセット「${p.name}」（${p.summary}）を読み込みます。\n現在のデータは上書きされます。よろしいですか？`)) return;
+      if (!(await ask(`プリセット「${p.name}」（${p.summary}）を読み込みます。\n現在のデータは上書きされます。よろしいですか？`))) return;
       onLoad(next);
       setOpen(false);
       notify(`プリセット「${p.name}」を読み込みました`);

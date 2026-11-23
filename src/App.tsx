@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+// window.confirm は dialog プラグインに非同期関数へ差し替えられるため、必ずこちらを await して使う
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { Download, GraduationCap, Eye, History, Plus, Printer, Upload, Wrench } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
@@ -100,9 +102,10 @@ export default function App() {
       const text = await invoke<string | null>("import_json");
       if (text == null) return;
       const next = deserialize(text, today());
-      const ok = window.confirm(
+      const ok = await confirm(
         `「${next.data.title}」（生徒 ${next.data.students.length} 名・履歴 ${next.data.history.length} 回）を読み込みます。
 現在のデータは上書きされます。よろしいですか？`,
+        { title: "インポート", kind: "warning" },
       );
       if (!ok) return;
       setSt(next);
