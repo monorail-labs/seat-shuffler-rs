@@ -19,6 +19,7 @@ export interface Data {
   history: number[][]; // history[回][生徒index] = 座席番号
   front_student_num: number[]; // 生徒index（名簿順 0 始まり）
   separation_groups: number[][]; // 生徒index の配列
+  adjacent_pairs: [number, number][]; // 左右の隣（通路を挟まない）に座らせる生徒index の組
 }
 
 export interface SolveResult {

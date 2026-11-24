@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { flushSync } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+// window.confirm は dialog プラグインに非同期関数へ差し替えられるため、必ずこちらを await して使う
+import { confirm } from "@tauri-apps/plugin-dialog";
 import { Download, GraduationCap, Eye, History, Plus, Printer, Upload, Wrench } from "lucide-react";
 import { Sidebar } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
+import { PresetMenu } from "./PresetMenu";
 import { makeSeatModel, toggleSeat } from "./types";
 import type { Data, SolveResult, View } from "./types";
 import { deserialize, fileName, serialize } from "./backup";
@@ -15,7 +18,11 @@ const today = () => new Date().toLocaleDateString("ja-JP");
 function initial(): AppState {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return JSON.parse(raw) as AppState;
+    if (raw) {
+      const saved = JSON.parse(raw) as AppState;
+      // 隣にするペア追加前のバージョンで保存されたデータにも対応する
+      return { ...saved, data: { ...saved.data, adjacent_pairs: saved.data.adjacent_pairs ?? [] } };
+    }
   } catch {
     /* 壊れた保存データは無視して初期化 */
   }
@@ -31,6 +38,7 @@ function initial(): AppState {
       history: [],
       front_student_num: [],
       separation_groups: [],
+      adjacent_pairs: [],
     },
     seats: [],
     retries: null,
@@ -94,9 +102,10 @@ export default function App() {
       const text = await invoke<string | null>("import_json");
       if (text == null) return;
       const next = deserialize(text, today());
-      const ok = window.confirm(
+      const ok = await confirm(
         `「${next.data.title}」（生徒 ${next.data.students.length} 名・履歴 ${next.data.history.length} 回）を読み込みます。
 現在のデータは上書きされます。よろしいですか？`,
+        { title: "インポート", kind: "warning" },
       );
       if (!ok) return;
       setSt(next);
@@ -184,6 +193,7 @@ export default function App() {
           </button>
           <button className={btn} disabled={!canCommit} onClick={addHistory}><History className="size-4" />履歴に追加</button>
           <div className="ml-auto flex gap-2">
+            <PresetMenu st={st} today={today()} onLoad={setSt} notify={(msg, err = false) => setToast({ msg, err })} />
             <button className={btn} onClick={importData}><Upload className="size-4" />インポート</button>
             <button className={btn} onClick={exportData}><Download className="size-4" />エクスポート</button>
             <button className={btn} onClick={() => printAs("student")}><Printer className="size-4" />生徒用印刷</button>

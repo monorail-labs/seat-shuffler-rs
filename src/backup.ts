@@ -66,6 +66,9 @@ function parseData(v: unknown): Data {
   const front_student_num = intArr(v.front_student_num ?? [], "前列指定");
   const separation_groups = intMatrix(v.separation_groups ?? [], "離すグループ");
   if ([...front_student_num, ...separation_groups.flat()].some((i) => i < 0 || i >= n)) fail("前列指定または離すグループに存在しない生徒が含まれています。");
+  const adjacent_pairs = intMatrix(v.adjacent_pairs ?? [], "隣にするペア");
+  if (adjacent_pairs.some((p) => p.length !== 2)) fail("隣にするペアの形式が正しくありません。");
+  if (adjacent_pairs.flat().some((i) => i < 0 || i >= n)) fail("隣にするペアに存在しない生徒が含まれています。");
   return {
     title: typeof v.title === "string" ? v.title : "座席表",
     teacher_name: optStr(v.teacher_name),
@@ -76,6 +79,7 @@ function parseData(v: unknown): Data {
     history,
     front_student_num,
     separation_groups,
+    adjacent_pairs: adjacent_pairs as [number, number][],
   };
 }
 
