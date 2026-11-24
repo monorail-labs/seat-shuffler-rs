@@ -10,6 +10,7 @@ import { SplitPane } from "./SplitPane";
 import type { SettingsTab } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
 import { usePresets } from "./usePresets";
+import { ReleaseNotesDialog, useWhatsNew } from "./WhatsNew";
 import { makeSeatModel, toggleSeat } from "./types";
 import type { Data, SolveResult, View } from "./types";
 import { deserialize, fileName, serialize } from "./backup";
@@ -57,6 +58,9 @@ export default function App() {
   const [editMode, setEditMode] = useState(false);
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null);
   const [tab, setTab] = useState<SettingsTab>("roster");
+  // 下の effect が保存データを書き込む前に判定する（新規インストールと更新を見分ける）
+  const [hadSavedData] = useState(() => localStorage.getItem(KEY) !== null);
+  const whatsNew = useWhatsNew(hadSavedData);
   const notify = (msg: string, err = false) => setToast({ msg, err });
   const presets = usePresets(st, today(), setSt, notify);
   const { data, seats } = st;
@@ -298,6 +302,8 @@ export default function App() {
           {toast.msg}
         </div>
       )}
+
+      <ReleaseNotesDialog notes={whatsNew.notes} heading="アップデートしました" onClose={whatsNew.close} />
     </div>
   );
 }
