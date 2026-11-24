@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Plus, Shuffle, Trash2, X } from "lucide-react";
+import { Loader2, Plus, Shuffle, Trash2, Wrench, X } from "lucide-react";
 import { makeSeatModel, newStudent, seatCount } from "./types";
 import { UpdateChecker } from "./UpdateChecker";
 import { TabBar } from "./TabBar";
@@ -23,6 +23,8 @@ interface Props extends EditorProps {
   presets: PresetsApi;
   importData: () => void;
   exportData: () => void;
+  editMode: boolean;
+  setEditMode: (v: boolean) => void;
 }
 
 const inp =
@@ -40,7 +42,7 @@ function loadShowCounts() {
 const btn2 =
   "inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 hover:bg-slate-100";
 
-export function Sidebar({ data, patch, run, busy, tab, onTab, presets, importData, exportData }: Props) {
+export function Sidebar({ data, patch, run, busy, tab, onTab, presets, importData, exportData, editMode, setEditMode }: Props) {
   const [showCounts, setShowCounts] = useState(loadShowCounts);
   useEffect(() => {
     try {
@@ -83,7 +85,9 @@ export function Sidebar({ data, patch, run, busy, tab, onTab, presets, importDat
       <TabBar tabs={tabs} active={tab} onSelect={onTab} showCounts={showCounts} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
-        {tab === "basic" && <Basic data={data} patch={patch} showCounts={showCounts} setShowCounts={setShowCounts} />}
+        {tab === "basic" && (
+          <Basic data={data} patch={patch} showCounts={showCounts} setShowCounts={setShowCounts} editMode={editMode} setEditMode={setEditMode} />
+        )}
         {tab === "roster" && <Roster data={data} patch={patch} />}
         {tab === "groups" && <Groups data={data} patch={patch} />}
         {tab === "pairs" && <Pairs data={data} patch={patch} />}
@@ -111,7 +115,14 @@ export function Sidebar({ data, patch, run, busy, tab, onTab, presets, importDat
   );
 }
 
-function Basic({ data, patch, showCounts, setShowCounts }: EditorProps & { showCounts: boolean; setShowCounts: (v: boolean) => void }) {
+interface BasicProps extends EditorProps {
+  showCounts: boolean;
+  setShowCounts: (v: boolean) => void;
+  editMode: boolean;
+  setEditMode: (v: boolean) => void;
+}
+
+function Basic({ data, patch, showCounts, setShowCounts, editMode, setEditMode }: BasicProps) {
   const rows = data.seat_model.length;
   const cols = data.seat_model[0]?.length ?? 0;
   // 全行が空白の列だけを「通路列」として表示（個別セル編集と矛盾させない）
@@ -161,9 +172,16 @@ function Basic({ data, patch, showCounts, setShowCounts }: EditorProps & { showC
         <p className={`text-xs ${mismatch ? "font-bold text-rose-700" : "text-slate-600"}`}>
           座席 {seats} 席 / 生徒 {data.students.length} 名{mismatch && "（席数と人数を一致させてください）"}
         </p>
-        <p className="text-xs text-slate-600">
-          1席ずつの追加・削除は、画面上部の「レイアウト変更モード」をオンにしてマスをクリックします。
-        </p>
+        <div className="flex items-center gap-3">
+          <button
+            className={`inline-flex shrink-0 items-center gap-1.5 rounded border px-2.5 py-1.5 text-sm ${editMode ? "border-slate-900 bg-slate-900 font-bold text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"}`}
+            aria-pressed={editMode}
+            onClick={() => setEditMode(!editMode)}
+          >
+            <Wrench className="size-4" />レイアウト変更モード
+          </button>
+          <p className="text-xs text-slate-600">オンにすると、座席表のマスをクリックして1席ずつ追加・削除できます。</p>
+        </div>
         <button
           className={btn2}
           onClick={() => {

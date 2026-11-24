@@ -3,7 +3,8 @@ import { flushSync } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 // window.confirm は dialog プラグインに非同期関数へ差し替えられるため、必ずこちらを await して使う
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { GraduationCap, Eye, History, Plus, Printer, Wrench } from "lucide-react";
+import { Plus } from "lucide-react";
+import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
 import type { SettingsTab } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
@@ -170,12 +171,19 @@ export default function App() {
   const count = (g: string) => data.students.filter((s) => s.gender === g).length;
   const canCommit = seats.length > 0 && seats.length === data.students.length;
 
-  const seg = (v: View) =>
-    `inline-flex items-center gap-1.5 px-3 py-1.5 text-sm ${view === v ? "bg-slate-900 font-bold text-white" : "bg-white text-slate-800 hover:bg-slate-100"}`;
-  const btn = "inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800 hover:bg-slate-100 disabled:opacity-50";
-
   return (
-    <div className="flex h-screen bg-white text-slate-900 print:block print:h-auto">
+    <div className="flex h-screen flex-col bg-white text-slate-900 print:block print:h-auto">
+      <Header
+        presets={presets}
+        openPresetTab={() => setTab("presets")}
+        view={view}
+        setView={setView}
+        canCommit={canCommit}
+        addHistory={addHistory}
+        printAs={printAs}
+      />
+
+      <div className="flex min-h-0 flex-1 print:block">
       <Sidebar
         data={data}
         patch={patch}
@@ -186,32 +194,11 @@ export default function App() {
         presets={presets}
         importData={importData}
         exportData={exportData}
+        editMode={editMode}
+        setEditMode={setEditMode}
       />
 
       <main className="flex min-w-0 flex-1 flex-col print:block">
-        <div className="flex flex-wrap items-center gap-2 border-b border-slate-300 bg-slate-50 px-5 py-2 print:hidden">
-          <div className="inline-flex overflow-hidden rounded border border-slate-300" role="group" aria-label="視点切り替え">
-            <button className={seg("student")} aria-pressed={view === "student"} onClick={() => setView("student")}>
-              <Eye className="size-4" />生徒視点（黒板が上）
-            </button>
-            <button className={`${seg("teacher")} border-l border-slate-300`} aria-pressed={view === "teacher"} onClick={() => setView("teacher")}>
-              <GraduationCap className="size-4" />先生視点（教卓が下）
-            </button>
-          </div>
-          <button
-            className={`inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-sm ${editMode ? "border-slate-900 bg-slate-900 font-bold text-white" : "border-slate-300 bg-white text-slate-800 hover:bg-slate-100"}`}
-            aria-pressed={editMode}
-            onClick={() => setEditMode((e) => !e)}
-          >
-            <Wrench className="size-4" />レイアウト変更モード
-          </button>
-          <button className={btn} disabled={!canCommit} onClick={addHistory}><History className="size-4" />履歴に追加</button>
-          <div className="ml-auto flex gap-2">
-            <button className={btn} onClick={() => printAs("student")}><Printer className="size-4" />生徒用印刷</button>
-            <button className={btn} onClick={() => printAs("teacher")}><Printer className="size-4" />先生用印刷</button>
-          </div>
-        </div>
-
         {/* 印刷対象。A4横の内寸（297-20 × 210-20mm）に収める */}
         <section className="sheet flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5 print:h-[190mm] print:gap-2 print:overflow-hidden print:p-0">
           <header className="flex items-baseline justify-between gap-4 border-b-2 border-slate-900 pb-1 print:border-black">
@@ -227,9 +214,14 @@ export default function App() {
           </header>
 
           {editMode && (
-            <p className="rounded border border-slate-400 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 print:hidden">
-              レイアウト変更モード：マスをクリックすると「座席 ⇄ 空白」が切り替わり、座席番号は左上から自動で振り直されます（現在 {data.seat_model.flat().filter((v) => v >= 0).length} 席 / 生徒 {data.students.length} 名）。
-            </p>
+            <div className="flex items-start gap-3 rounded border border-slate-400 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 print:hidden">
+              <p className="min-w-0 flex-1">
+                レイアウト変更モード：マスをクリックすると「座席 ⇄ 空白」が切り替わり、座席番号は左上から自動で振り直されます（現在 {data.seat_model.flat().filter((v) => v >= 0).length} 席 / 生徒 {data.students.length} 名）。
+              </p>
+              <button className="shrink-0 rounded border border-slate-400 bg-white px-2 py-0.5 text-xs hover:bg-slate-100" onClick={() => setEditMode(false)}>
+                終了
+              </button>
+            </div>
           )}
 
           {view === "student" && <Board label="黒板" />}
@@ -288,6 +280,7 @@ export default function App() {
           </footer>
         </section>
       </main>
+      </div>
 
       {toast && (
         <div
