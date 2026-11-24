@@ -7,6 +7,8 @@ export const MIN_LEFT = 300;
 export const MIN_RIGHT = 320;
 const DEFAULT_RATIO = 0.38;
 const KEY_STEP = 16;
+/** スプリッター自体の幅（className の w-2 と合わせる） */
+const HANDLE_WIDTH = 8;
 
 function loadRatio(): number {
   try {
@@ -17,9 +19,12 @@ function loadRatio(): number {
   }
 }
 
-/** 全体幅 total のときの左ペインの幅。両方の最小幅を守り、収まらないときは左（設定）を優先する */
-export function leftWidthFor(ratio: number, total: number): number {
-  return Math.max(MIN_LEFT, Math.min(ratio * total, total - MIN_RIGHT));
+/**
+ * 2 ペインに配れる幅 space（スプリッターの幅を除く）のときの左ペインの幅。
+ * 両方の最小幅を守り、収まらないときは左（設定）を優先する
+ */
+export function leftWidthFor(ratio: number, space: number): number {
+  return Math.max(MIN_LEFT, Math.min(ratio * space, space - MIN_RIGHT));
 }
 
 /**
@@ -29,14 +34,14 @@ export function leftWidthFor(ratio: number, total: number): number {
  */
 export function SplitPane({ left, right }: { left: ReactNode; right: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [total, setTotal] = useState(0);
+  const [space, setSpace] = useState(0);
   const [ratio, setRatio] = useState(loadRatio);
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const ro = new ResizeObserver(([entry]) => setTotal(entry.contentRect.width));
+    const ro = new ResizeObserver(([entry]) => setSpace(Math.max(0, entry.contentRect.width - HANDLE_WIDTH)));
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
@@ -51,8 +56,8 @@ export function SplitPane({ left, right }: { left: ReactNode; right: ReactNode }
     }
   }, [ratio, dragging]);
 
-  const leftWidth = total ? leftWidthFor(ratio, total) : null;
-  const setLeftWidth = (w: number) => total && setRatio(leftWidthFor(w / total, total) / total);
+  const leftWidth = space ? leftWidthFor(ratio, space) : null;
+  const setLeftWidth = (w: number) => space && setRatio(leftWidthFor(w / space, space) / space);
 
   const onPointerDown = (e: PointerEvent<HTMLDivElement>) => {
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -67,7 +72,7 @@ export function SplitPane({ left, right }: { left: ReactNode; right: ReactNode }
   };
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (leftWidth === null) return;
-    const next = { ArrowLeft: leftWidth - KEY_STEP, ArrowRight: leftWidth + KEY_STEP, Home: MIN_LEFT, End: total - MIN_RIGHT }[e.key];
+    const next = { ArrowLeft: leftWidth - KEY_STEP, ArrowRight: leftWidth + KEY_STEP, Home: MIN_LEFT, End: space - MIN_RIGHT }[e.key];
     if (next === undefined) return;
     e.preventDefault();
     setLeftWidth(next);
@@ -83,7 +88,7 @@ export function SplitPane({ left, right }: { left: ReactNode; right: ReactNode }
         aria-orientation="vertical"
         aria-label="設定パネルと座席表の幅"
         aria-valuemin={MIN_LEFT}
-        aria-valuemax={Math.max(MIN_LEFT, total - MIN_RIGHT)}
+        aria-valuemax={Math.max(MIN_LEFT, space - MIN_RIGHT)}
         aria-valuenow={leftWidth === null ? undefined : Math.round(leftWidth)}
         tabIndex={0}
         title="ドラッグで幅を調整（ダブルクリックで元に戻す）"
