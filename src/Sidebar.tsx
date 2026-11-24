@@ -2,14 +2,27 @@ import { useEffect, useState } from "react";
 import { Loader2, Plus, Shuffle, Trash2, X } from "lucide-react";
 import { makeSeatModel, newStudent, seatCount } from "./types";
 import { UpdateChecker } from "./UpdateChecker";
+import { TabBar } from "./TabBar";
+import type { TopTab } from "./TabBar";
+import { BackupPanel, PresetManager } from "./DataPanels";
+import type { PresetsApi } from "./usePresets";
 import type { Data, Student } from "./types";
 
+export type SettingsTab = "basic" | "roster" | "groups" | "pairs" | "presets" | "backup";
+
 type Patch = (f: (d: Data) => Data, clearSeats?: boolean) => void;
-interface Props {
+interface EditorProps {
   data: Data;
   patch: Patch;
+}
+interface Props extends EditorProps {
   run: () => void;
   busy: boolean;
+  tab: SettingsTab;
+  onTab: (t: SettingsTab) => void;
+  presets: PresetsApi;
+  importData: () => void;
+  exportData: () => void;
 }
 
 const inp =
@@ -27,8 +40,7 @@ function loadShowCounts() {
 const btn2 =
   "inline-flex items-center gap-1 rounded border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-800 hover:bg-slate-100";
 
-export function Sidebar({ data, patch, run, busy }: Props) {
-  const [tab, setTab] = useState<"basic" | "roster" | "groups" | "pairs">("basic");
+export function Sidebar({ data, patch, run, busy, tab, onTab, presets, importData, exportData }: Props) {
   const [showCounts, setShowCounts] = useState(loadShowCounts);
   useEffect(() => {
     try {
@@ -37,13 +49,27 @@ export function Sidebar({ data, patch, run, busy }: Props) {
       /* 保存できなくても表示には影響しない */
     }
   }, [showCounts]);
-  const n = (x: number) => (showCounts ? `（${x}）` : "");
-  const tabs = [
-    ["basic", "基本設定"],
-    ["roster", `名簿${n(data.students.length)}`],
-    ["groups", `離すグループ${n(data.separation_groups.length)}`],
-    ["pairs", `隣にする${n(data.adjacent_pairs.length)}`],
-  ] as const;
+  // 普段使う「名簿」「基本設定」は1段目から直接開き、それ以外は2段目にまとめる
+  const tabs: TopTab<SettingsTab>[] = [
+    { id: "roster", label: "名簿", count: data.students.length },
+    { id: "basic", label: "基本設定" },
+    {
+      group: "conditions",
+      label: "席の条件",
+      children: [
+        { id: "groups", label: "離すグループ", count: data.separation_groups.length },
+        { id: "pairs", label: "隣にする", count: data.adjacent_pairs.length },
+      ],
+    },
+    {
+      group: "data",
+      label: "データ",
+      children: [
+        { id: "presets", label: "プリセット", count: presets.presets.length },
+        { id: "backup", label: "インポート/エクスポート" },
+      ],
+    },
+  ];
   // バックエンドの仕様（有効座席数 = 生徒数）と同じ条件で実行を止める
   const seats = seatCount(data.seat_model);
   const blocker = !data.students.length
@@ -54,25 +80,15 @@ export function Sidebar({ data, patch, run, busy }: Props) {
 
   return (
     <aside className="flex w-120 shrink-0 flex-col border-r border-slate-300 bg-slate-50 print:hidden">
-      <div role="tablist" className="flex border-b border-slate-300 bg-white">
-        {tabs.map(([k, t]) => (
-          <button
-            key={k}
-            role="tab"
-            aria-selected={tab === k}
-            onClick={() => setTab(k)}
-            className={`flex-1 border-b-2 px-2 py-2.5 text-sm ${tab === k ? "border-slate-900 font-bold text-slate-900" : "border-transparent text-slate-600 hover:bg-slate-100"}`}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar tabs={tabs} active={tab} onSelect={onTab} showCounts={showCounts} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {tab === "basic" && <Basic data={data} patch={patch} showCounts={showCounts} setShowCounts={setShowCounts} />}
         {tab === "roster" && <Roster data={data} patch={patch} />}
         {tab === "groups" && <Groups data={data} patch={patch} />}
         {tab === "pairs" && <Pairs data={data} patch={patch} />}
+        {tab === "presets" && <PresetManager api={presets} title={data.title} />}
+        {tab === "backup" && <BackupPanel importData={importData} exportData={exportData} />}
       </div>
 
       <div className="border-t border-slate-300 bg-white p-3 space-y-2">
@@ -95,7 +111,7 @@ export function Sidebar({ data, patch, run, busy }: Props) {
   );
 }
 
-function Basic({ data, patch, showCounts, setShowCounts }: Omit<Props, "run" | "busy"> & { showCounts: boolean; setShowCounts: (v: boolean) => void }) {
+function Basic({ data, patch, showCounts, setShowCounts }: EditorProps & { showCounts: boolean; setShowCounts: (v: boolean) => void }) {
   const rows = data.seat_model.length;
   const cols = data.seat_model[0]?.length ?? 0;
   // 全行が空白の列だけを「通路列」として表示（個別セル編集と矛盾させない）
@@ -176,7 +192,7 @@ function Basic({ data, patch, showCounts, setShowCounts }: Omit<Props, "run" | "
   );
 }
 
-function Roster({ data, patch }: Omit<Props, "run" | "busy">) {
+function Roster({ data, patch }: EditorProps) {
   const [paste, setPaste] = useState("");
   const set = (i: number, p: Partial<Student>) =>
     patch((d) => ({ ...d, students: d.students.map((s, k) => (k === i ? { ...s, ...p } : s)) }));
@@ -264,7 +280,7 @@ function Roster({ data, patch }: Omit<Props, "run" | "busy">) {
   );
 }
 
-function Groups({ data, patch }: Omit<Props, "run" | "busy">) {
+function Groups({ data, patch }: EditorProps) {
   const [sel, setSel] = useState<number[]>([]);
   const nm = (i: number) => data.students[i]?.name || `番号${data.students[i]?.student_no}`;
   return (
@@ -310,7 +326,7 @@ function Groups({ data, patch }: Omit<Props, "run" | "busy">) {
   );
 }
 
-function Pairs({ data, patch }: Omit<Props, "run" | "busy">) {
+function Pairs({ data, patch }: EditorProps) {
   const [a, setA] = useState<number | null>(null);
   const [b, setB] = useState<number | null>(null);
   const nm = (i: number) => data.students[i]?.name || `番号${data.students[i]?.student_no}`;

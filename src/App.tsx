@@ -3,10 +3,11 @@ import { flushSync } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 // window.confirm は dialog プラグインに非同期関数へ差し替えられるため、必ずこちらを await して使う
 import { confirm } from "@tauri-apps/plugin-dialog";
-import { Download, GraduationCap, Eye, History, Plus, Printer, Upload, Wrench } from "lucide-react";
+import { GraduationCap, Eye, History, Plus, Printer, Wrench } from "lucide-react";
 import { Sidebar } from "./Sidebar";
+import type { SettingsTab } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
-import { PresetMenu } from "./PresetMenu";
+import { usePresets } from "./usePresets";
 import { makeSeatModel, toggleSeat } from "./types";
 import type { Data, SolveResult, View } from "./types";
 import { deserialize, fileName, serialize } from "./backup";
@@ -53,6 +54,9 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [toast, setToast] = useState<{ msg: string; err: boolean } | null>(null);
+  const [tab, setTab] = useState<SettingsTab>("roster");
+  const notify = (msg: string, err = false) => setToast({ msg, err });
+  const presets = usePresets(st, today(), setSt, notify);
   const { data, seats } = st;
 
   useEffect(() => {
@@ -172,7 +176,17 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-white text-slate-900 print:block print:h-auto">
-      <Sidebar data={data} patch={patch} run={run} busy={busy} />
+      <Sidebar
+        data={data}
+        patch={patch}
+        run={run}
+        busy={busy}
+        tab={tab}
+        onTab={setTab}
+        presets={presets}
+        importData={importData}
+        exportData={exportData}
+      />
 
       <main className="flex min-w-0 flex-1 flex-col print:block">
         <div className="flex flex-wrap items-center gap-2 border-b border-slate-300 bg-slate-50 px-5 py-2 print:hidden">
@@ -193,9 +207,6 @@ export default function App() {
           </button>
           <button className={btn} disabled={!canCommit} onClick={addHistory}><History className="size-4" />履歴に追加</button>
           <div className="ml-auto flex gap-2">
-            <PresetMenu st={st} today={today()} onLoad={setSt} notify={(msg, err = false) => setToast({ msg, err })} />
-            <button className={btn} onClick={importData}><Upload className="size-4" />インポート</button>
-            <button className={btn} onClick={exportData}><Download className="size-4" />エクスポート</button>
             <button className={btn} onClick={() => printAs("student")}><Printer className="size-4" />生徒用印刷</button>
             <button className={btn} onClick={() => printAs("teacher")}><Printer className="size-4" />先生用印刷</button>
           </div>
