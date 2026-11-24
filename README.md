@@ -47,6 +47,8 @@
   - `@media print` により、操作UIを隠蔽してA4用紙（横）にジャストフィットするハイコントラスト印刷スタイルを標準装備。
 - **安全な自動アップデート機構 (Auto-Updater)**:
   - 公開鍵暗号（Minisign）による電子署名検証と GitHub Releases 連携を内蔵。ワンクリックでバックグラウンド自己置換アップデートを実行。
+  - アップデート後の初回起動時に、そのバージョンの変更内容（新機能・改善・修正）を一度だけ表示。過去の更新内容は画面左下の「更新内容」からいつでも確認可能。
+  - リリースノートは `src/releaseNotes.json` に一元管理し、`scripts/bump.mjs` は記入漏れを検出して停止、`scripts/release-notes.mjs` で GitHub Releases 用の Markdown を生成。
 
 ---
 
