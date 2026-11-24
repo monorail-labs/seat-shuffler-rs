@@ -6,6 +6,7 @@ import { confirm } from "@tauri-apps/plugin-dialog";
 import { Plus } from "lucide-react";
 import { Header } from "./Header";
 import { Sidebar } from "./Sidebar";
+import { SplitPane } from "./SplitPane";
 import type { SettingsTab } from "./Sidebar";
 import { SeatCard } from "./SeatCard";
 import { usePresets } from "./usePresets";
@@ -183,104 +184,107 @@ export default function App() {
         printAs={printAs}
       />
 
-      <div className="flex min-h-0 flex-1 print:block">
-      <Sidebar
-        data={data}
-        patch={patch}
-        run={run}
-        busy={busy}
-        tab={tab}
-        onTab={setTab}
-        presets={presets}
-        importData={importData}
-        exportData={exportData}
-        editMode={editMode}
-        setEditMode={setEditMode}
-      />
+      <SplitPane
+        left={
+          <Sidebar
+            data={data}
+            patch={patch}
+            run={run}
+            busy={busy}
+            tab={tab}
+            onTab={setTab}
+            presets={presets}
+            importData={importData}
+            exportData={exportData}
+            editMode={editMode}
+            setEditMode={setEditMode}
+          />
+        }
+        right={
+          <main className="flex min-w-0 flex-1 flex-col print:block">
+            {/* 印刷対象。A4横の内寸（297-20 × 210-20mm）に収める */}
+            <section className="sheet flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5 print:h-[190mm] print:gap-2 print:overflow-hidden print:p-0">
+              <header className="flex items-baseline justify-between gap-4 border-b-2 border-slate-900 pb-1 print:border-black">
+                <input
+                  aria-label="座席表タイトル"
+                  className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 text-2xl font-bold hover:border-slate-300 focus:border-slate-600 focus:outline-none print:p-0 print:text-[20pt] print:text-black"
+                  value={data.title}
+                  onChange={(e) => patch((d) => ({ ...d, title: e.target.value }))}
+                />
+                <span className="shrink-0 text-sm text-slate-600 print:text-black">
+                  {view === "student" ? "生徒視点" : "先生視点（教卓側から見た配置）"}
+                </span>
+              </header>
 
-      <main className="flex min-w-0 flex-1 flex-col print:block">
-        {/* 印刷対象。A4横の内寸（297-20 × 210-20mm）に収める */}
-        <section className="sheet flex min-h-0 flex-1 flex-col gap-3 overflow-auto p-5 print:h-[190mm] print:gap-2 print:overflow-hidden print:p-0">
-          <header className="flex items-baseline justify-between gap-4 border-b-2 border-slate-900 pb-1 print:border-black">
-            <input
-              aria-label="座席表タイトル"
-              className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 text-2xl font-bold hover:border-slate-300 focus:border-slate-600 focus:outline-none print:p-0 print:text-[20pt] print:text-black"
-              value={data.title}
-              onChange={(e) => patch((d) => ({ ...d, title: e.target.value }))}
-            />
-            <span className="shrink-0 text-sm text-slate-600 print:text-black">
-              {view === "student" ? "生徒視点" : "先生視点（教卓側から見た配置）"}
-            </span>
-          </header>
-
-          {editMode && (
-            <div className="flex items-start gap-3 rounded border border-slate-400 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 print:hidden">
-              <p className="min-w-0 flex-1">
-                レイアウト変更モード：マスをクリックすると「座席 ⇄ 空白」が切り替わり、座席番号は左上から自動で振り直されます（現在 {data.seat_model.flat().filter((v) => v >= 0).length} 席 / 生徒 {data.students.length} 名）。
-              </p>
-              <button className="shrink-0 rounded border border-slate-400 bg-white px-2 py-0.5 text-xs hover:bg-slate-100" onClick={() => setEditMode(false)}>
-                終了
-              </button>
-            </div>
-          )}
-
-          {view === "student" && <Board label="黒板" />}
-
-          <div className="grid min-h-0 flex-1 gap-1.5 print:gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridAutoRows: "minmax(0, 1fr)" }}>
-            {grid.flatMap((row, r) =>
-              row.map((no, c) => {
-                const k = r * cols + c;
-                // 先生視点は反転表示なので、クリック先は元のモデル座標へ戻す
-                const or = view === "teacher" ? rows - 1 - r : r;
-                const oc = view === "teacher" ? cols - 1 - c : c;
-                if (no < 0) {
-                  // 通常時は枠なしの通路。編集中だけ「席を追加できる」点線枠を出す
-                  return editMode ? (
-                    <button
-                      key={k}
-                      type="button"
-                      aria-label="ここに席を追加"
-                      onClick={() => toggleCell(or, oc)}
-                      className="flex items-center justify-center rounded-md border border-dashed border-slate-300 text-slate-300 hover:border-slate-800 hover:bg-slate-50 hover:text-slate-800"
-                    >
-                      <Plus className="size-5" />
-                    </button>
-                  ) : (
-                    <div key={k} aria-hidden />
-                  );
-                }
-                const card = <SeatCard seatNo={no} student={bySeat.has(no) ? data.students[bySeat.get(no)!] : undefined} />;
-                return editMode ? (
-                  <button
-                    key={k}
-                    type="button"
-                    aria-label={`座席${no}を空白にする`}
-                    onClick={() => toggleCell(or, oc)}
-                    className="grid min-h-0 min-w-0 cursor-pointer rounded-md text-left ring-2 ring-slate-300 hover:ring-slate-900"
-                  >
-                    {card}
+              {editMode && (
+                <div className="flex items-start gap-3 rounded border border-slate-400 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 print:hidden">
+                  <p className="min-w-0 flex-1">
+                    レイアウト変更モード：マスをクリックすると「座席 ⇄ 空白」が切り替わり、座席番号は左上から自動で振り直されます（現在 {data.seat_model.flat().filter((v) => v >= 0).length} 席 / 生徒 {data.students.length} 名）。
+                  </p>
+                  <button className="shrink-0 rounded border border-slate-400 bg-white px-2 py-0.5 text-xs hover:bg-slate-100" onClick={() => setEditMode(false)}>
+                    終了
                   </button>
-                ) : (
-                  <div key={k} className="grid min-h-0 min-w-0">{card}</div>
-                );
-              }),
-            )}
-          </div>
+                </div>
+              )}
 
-          {view === "teacher" && <Board label="教卓" />}
+              {view === "student" && <Board label="黒板" />}
 
-          <footer className="grid grid-cols-3 items-center border-t border-slate-400 pt-2 text-sm text-slate-700 print:border-black print:text-[9pt] print:text-black">
-            <span>作成日 {st.createdAt}　更新日 {st.updatedAt}</span>
-            <span className="text-center font-medium tabular-nums">
-              男: {count("男")}名　女: {count("女")}名　計: {data.students.length}名
-            </span>
-            <span className="text-right">
-              担任 {data.teacher_name || "未設定"}　副担任 {data.sub_teacher_name || "未設定"}
-            </span>
-          </footer>
-        </section>
-      </main>
-      </div>
+              <div className="grid min-h-0 flex-1 gap-1.5 print:gap-1" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`, gridAutoRows: "minmax(0, 1fr)" }}>
+                {grid.flatMap((row, r) =>
+                  row.map((no, c) => {
+                    const k = r * cols + c;
+                    // 先生視点は反転表示なので、クリック先は元のモデル座標へ戻す
+                    const or = view === "teacher" ? rows - 1 - r : r;
+                    const oc = view === "teacher" ? cols - 1 - c : c;
+                    if (no < 0) {
+                      // 通常時は枠なしの通路。編集中だけ「席を追加できる」点線枠を出す
+                      return editMode ? (
+                        <button
+                          key={k}
+                          type="button"
+                          aria-label="ここに席を追加"
+                          onClick={() => toggleCell(or, oc)}
+                          className="flex items-center justify-center rounded-md border border-dashed border-slate-300 text-slate-300 hover:border-slate-800 hover:bg-slate-50 hover:text-slate-800"
+                        >
+                          <Plus className="size-5" />
+                        </button>
+                      ) : (
+                        <div key={k} aria-hidden />
+                      );
+                    }
+                    const card = <SeatCard seatNo={no} student={bySeat.has(no) ? data.students[bySeat.get(no)!] : undefined} />;
+                    return editMode ? (
+                      <button
+                        key={k}
+                        type="button"
+                        aria-label={`座席${no}を空白にする`}
+                        onClick={() => toggleCell(or, oc)}
+                        className="grid min-h-0 min-w-0 cursor-pointer rounded-md text-left ring-2 ring-slate-300 hover:ring-slate-900"
+                      >
+                        {card}
+                      </button>
+                    ) : (
+                      <div key={k} className="grid min-h-0 min-w-0">{card}</div>
+                    );
+                  }),
+                )}
+              </div>
+
+              {view === "teacher" && <Board label="教卓" />}
+
+              <footer className="grid grid-cols-3 items-center border-t border-slate-400 pt-2 text-sm text-slate-700 print:border-black print:text-[9pt] print:text-black">
+                <span>作成日 {st.createdAt}　更新日 {st.updatedAt}</span>
+                <span className="text-center font-medium tabular-nums">
+                  男: {count("男")}名　女: {count("女")}名　計: {data.students.length}名
+                </span>
+                <span className="text-right">
+                  担任 {data.teacher_name || "未設定"}　副担任 {data.sub_teacher_name || "未設定"}
+                </span>
+              </footer>
+            </section>
+          </main>
+        }
+      />
 
       {toast && (
         <div

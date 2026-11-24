@@ -81,7 +81,7 @@ export function Sidebar({ data, patch, run, busy, tab, onTab, presets, importDat
       : null;
 
   return (
-    <aside className="flex w-120 shrink-0 flex-col border-r border-slate-300 bg-slate-50 print:hidden">
+    <aside className="flex w-full min-w-0 flex-col bg-slate-50 print:hidden">
       <TabBar tabs={tabs} active={tab} onSelect={onTab} showCounts={showCounts} />
 
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
