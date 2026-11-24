@@ -203,7 +203,7 @@ function Basic({ data, patch, showCounts, setShowCounts, editMode, setEditMode }
         <legend className="pr-2 text-sm font-bold text-slate-800">表示</legend>
         <label className="flex items-center gap-2 text-sm text-slate-800">
           <input type="checkbox" className="size-4" checked={showCounts} onChange={(e) => setShowCounts(e.target.checked)} />
-          タブに件数を表示する（例: 名簿（30））
+          タブに件数を表示する（名簿の人数・グループ数など）
         </label>
       </fieldset>
     </div>

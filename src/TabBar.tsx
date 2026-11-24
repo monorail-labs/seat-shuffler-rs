@@ -26,11 +26,17 @@ interface Props<Id extends string> {
 const isGroup = <Id extends string>(t: TopTab<Id>): t is TabGroup<Id> => "children" in t;
 const keyOf = <Id extends string>(t: TopTab<Id>) => (isGroup(t) ? t.group : t.id);
 
-/** カテゴリの件数は、サブタブの件数の合計（件数を持つサブタブがなければ表示しない） */
-const countOf = <Id extends string>(t: TopTab<Id>) =>
-  isGroup(t) ? t.children.reduce<number | undefined>((sum, c) => (c.count === undefined ? sum : (sum ?? 0) + c.count), undefined) : t.count;
-
-const withCount = (label: string, count: number | undefined, show: boolean) => (show && count !== undefined ? `${label}（${count}）` : label);
+/** 件数は「（16）」ではなく小さなバッジで出す。設定パネルを最小幅（300px）にしても1段目のラベルが切れないように */
+function Label({ text, count, show }: { text: string; count?: number; show: boolean }) {
+  return (
+    <>
+      {text}
+      {show && count !== undefined && (
+        <span className="ml-1 rounded-full bg-slate-200 px-1.5 text-xs font-normal tabular-nums text-slate-700">{count}</span>
+      )}
+    </>
+  );
+}
 
 /**
  * Vivaldi の2段タブのような二段タブバー。
@@ -58,9 +64,10 @@ export function TabBar<Id extends string>({ tabs, active, onSelect, showCounts }
               role="tab"
               aria-selected={on}
               onClick={() => selectTop(t)}
-              className={`min-w-0 flex-1 truncate border-b-2 px-2 py-2.5 text-sm ${on ? "border-slate-900 font-bold text-slate-900" : "border-transparent text-slate-600 hover:bg-slate-100"}`}
+              className={`min-w-0 flex-auto truncate border-b-2 px-1.5 py-2.5 text-sm ${on ? "border-slate-900 font-bold text-slate-900" : "border-transparent text-slate-600 hover:bg-slate-100"}`}
             >
-              {withCount(t.label, countOf(t), showCounts)}
+              {/* カテゴリ自体の件数は出さない（中身はサブタブ側で見せる） */}
+              <Label text={t.label} count={isGroup(t) ? undefined : t.count} show={showCounts} />
               {isGroup(t) && <span aria-hidden className="ml-0.5 text-xs text-slate-400">▾</span>}
             </button>
           );
@@ -76,7 +83,7 @@ export function TabBar<Id extends string>({ tabs, active, onSelect, showCounts }
               onClick={() => selectChild(current, c.id)}
               className={`min-w-0 truncate rounded px-3 py-1 text-sm ${active === c.id ? "bg-white font-bold text-slate-900 shadow-sm ring-1 ring-slate-300" : "text-slate-600 hover:bg-white/60"}`}
             >
-              {withCount(c.label, c.count, showCounts)}
+              <Label text={c.label} count={c.count} show={showCounts} />
             </button>
           ))}
         </div>
