@@ -3,6 +3,8 @@ import { getVersion } from "@tauri-apps/api/app";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { AlertCircle, CheckCircle2, Download, Loader2, RefreshCw, RotateCw } from "lucide-react";
+import { RELEASE_NOTES } from "./releaseNotes";
+import { ReleaseNotesDialog } from "./WhatsNew";
 
 type Phase =
   | { k: "idle" }
@@ -31,6 +33,7 @@ export function UpdateChecker() {
   const [ver, setVer] = useState("");
   const [p, setP] = useState<Phase>({ k: "idle" });
   const [fade, setFade] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
 
   useEffect(() => {
     getVersion().then(setVer).catch(() => setVer(""));
@@ -89,8 +92,15 @@ export function UpdateChecker() {
   return (
     <div className="mt-3 border-t border-slate-200 pt-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs text-slate-600">seat-shuffler{ver && ` v${ver}`}</span>
-        <button className={`${secondary} px-2! py-1! text-xs!`} disabled={busy || p.k === "available"} onClick={checkNow}>
+        {/* 設定パネルが最小幅（300px）でも折り返さないよう、縮めるのはアプリ名だけにする */}
+        <span className="flex min-w-0 items-baseline gap-1 whitespace-nowrap text-xs text-slate-600">
+          <span className="truncate" title="seat-shuffler">seat-shuffler</span>
+          {ver && <span className="shrink-0">v{ver}</span>}
+          <button className="ml-1 shrink-0 text-slate-700 underline hover:text-slate-900" onClick={() => setShowNotes(true)}>
+            更新内容
+          </button>
+        </span>
+        <button className={`${secondary} shrink-0 whitespace-nowrap px-2! py-1! text-xs!`} disabled={busy || p.k === "available"} onClick={checkNow}>
           <RefreshCw className={`size-3.5 ${p.k === "checking" ? "animate-spin" : ""}`} />
           {p.k === "checking" ? "確認中…" : "更新を確認"}
         </button>
@@ -155,6 +165,8 @@ export function UpdateChecker() {
           </div>
         )}
       </div>
+
+      <ReleaseNotesDialog notes={showNotes ? RELEASE_NOTES : []} heading="更新内容" onClose={() => setShowNotes(false)} />
     </div>
   );
 }

@@ -7,6 +7,13 @@ if (!newVersion) {
   process.exit(1);
 }
 
+// 0. アプリ内のリリースノート（更新後に一度だけ表示する）が書かれているか確認する
+const notes = JSON.parse(fs.readFileSync("./src/releaseNotes.json", "utf8"));
+if (!notes.some((n) => n.version === newVersion)) {
+  console.error(`src/releaseNotes.json に v${newVersion} のリリースノートがありません。先頭に追加してから実行してください。`);
+  process.exit(1);
+}
+
 // 1. package.json 更新
 const pkgPath = './package.json';
 const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
